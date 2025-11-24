@@ -1,18 +1,25 @@
 package co.edu.escuelaing.uplearn.chat.controller;
 
+import co.edu.escuelaing.uplearn.chat.domain.Message;
 import co.edu.escuelaing.uplearn.chat.dto.ChatContact;
+import co.edu.escuelaing.uplearn.chat.dto.ChatMessageData;
 import co.edu.escuelaing.uplearn.chat.dto.PublicProfile;
 import co.edu.escuelaing.uplearn.chat.service.AuthorizationService;
 import co.edu.escuelaing.uplearn.chat.service.ChatService;
 import co.edu.escuelaing.uplearn.chat.service.ReservationClient;
 import co.edu.escuelaing.uplearn.chat.service.UserServiceClient;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import co.edu.escuelaing.uplearn.chat.dto.ChatMessageData;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/chat")
 @RequiredArgsConstructor
@@ -22,11 +29,9 @@ public class ChatController {
     private final ChatService chat;
     private final ReservationClient reservations;
     private final UserServiceClient users;
+
     /**
-     * Retrieves the chat contacts for the authenticated user.
-     *
-     * @param authorization The authorization header containing the user's token.
-     * @return A list of ChatContact objects representing the user's chat contacts.
+     * Lista de contactos con los que el usuario autenticado tiene reservas válidas.
      */
     @GetMapping("/contacts")
     public List<ChatContact> contacts(@RequestHeader("Authorization") String authorization) {
@@ -37,8 +42,9 @@ public class ChatController {
 
         return ids.stream().map(id -> {
             PublicProfile p = users.getPublicProfileById(id);
-            if (p == null)
+            if (p == null) {
                 p = PublicProfile.builder().id(id).name("Usuario").email("").build();
+            }
             return ChatContact.builder()
                     .id(p.getId())
                     .sub(p.getSub())
@@ -46,38 +52,67 @@ public class ChatController {
                     .email(p.getEmail())
                     .avatarUrl(p.getAvatarUrl())
                     .build();
-        }).collect(Collectors.toList());
+        }).toList();
     }
+
     /**
-     * Retrieves the chat history for a specific chat.
-     *
-     * @param chatId        The ID of the chat whose history is to be retrieved.
-     * @param authorization The authorization header containing the user's token.
-     * @return A list of ChatMessageData objects representing the chat history.
+     * Historial de mensajes para un chat concreto.
+     * Se intenta mapear cada mensaje; si alguno falla, se loguea y se omite
+     * para evitar que un solo registro corrupto rompa todo el endpoint.
      */
     @GetMapping("/history/{chatId}")
-    public List<ChatMessageData> history(@PathVariable String chatId,
-                                         @RequestHeader("Authorization") String authorization) {
-        return chat.history(chatId).stream()
-                .map(co.edu.escuelaing.uplearn.chat.service.ChatService::toDto)
-                .toList();
+    public ResponseEntity<?> history(
+            @PathVariable("chatId") String chatId,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        try {
+            List<Message> raw = chat.history(chatId);
+            if (raw == null) {
+                return ResponseEntity.ok(List.of());
+            }
+            List<ChatMessageData> out = new ArrayList<>(raw.size());
+            for (Message m : raw) {
+                try {
+                    out.add(chat.toDto(m));
+                } catch (Exception ex) {
+                    String mid = safeMessageId(m);
+                    log.error("Error convirtiendo mensaje {} de chat {}: {}", mid, chatId, ex.toString(), ex);
+                }
+            }
+            return ResponseEntity.ok(out);
+        } catch (Exception e) {
+            log.error("Error cargando historial para chat {}: {}", chatId, e.toString(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Error cargando historial del chat", "details", e.getMessage()));
+        }
     }
+
+    /** 
+     * Obtener un ID de mensaje seguro para logging 
+     */
+    private String safeMessageId(Message m) {
+        try {
+            if (m != null && m.getId() != null) {
+                return m.getId();
+            }
+        } catch (Exception ex) {
+            log.debug("Ignored error obtaining message id", ex);
+        }
+        return "<unknown>";
+    }
+
     /**
-     * Retrieves the chat ID for a chat between the authenticated user and another user.
-     *
-     * @param otherUserId   The ID of the other user in the chat.
-     * @param authorization The authorization header containing the user's token.
-     * @return A map containing the chat ID and the authenticated user's ID.
+     * Calcula el chatId entre el usuario autenticado y otro usuario.
      */
     @GetMapping("/chat-id/with/{otherUserId}")
-    public Map<String, String> chatId(@PathVariable String otherUserId,
-                                      @RequestHeader("Authorization") String authorization) {
-        String meId;
-        try {
-            meId = authz.me(authorization).getId(); 
-        } catch (Exception e) {
-            meId = authz.subject(authorization);
-        }
-        return Map.of("chatId", chat.chatIdOf(meId, otherUserId), "meId", meId);
+    public Map<String, String> chatId(
+            @PathVariable("otherUserId") String otherUserId,
+            @RequestHeader("Authorization") String authorization) {
+
+        String meId = authz.subject(authorization);
+        String chatId = chat.chatIdOf(meId, otherUserId);
+
+        return Map.of(
+                "chatId", chatId,
+                "meId", meId);
     }
 }

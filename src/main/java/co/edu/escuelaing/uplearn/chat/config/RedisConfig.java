@@ -17,7 +17,7 @@ public class RedisConfig {
     private int port;
 
     /**
-     * Configures the connection factory for Redis.
+     * Configuración de la conexión a Redis.
      */
     @Bean
     public LettuceConnectionFactory redisConnectionFactory() {
@@ -25,13 +25,16 @@ public class RedisConfig {
     }
 
     /**
-     * Configures the Redis template for string operations.
+     * Configuración del template de Redis para operaciones con cadenas.
      */
     @Bean
     public StringRedisTemplate stringRedisTemplate(LettuceConnectionFactory cf) {
         return new StringRedisTemplate(cf);
     }
 
+    /**
+     * Configuración del contenedor de listeners de mensajes de Redis.
+     */
     @Bean
     public RedisMessageListenerContainer listenerContainer(LettuceConnectionFactory cf) {
         RedisMessageListenerContainer c = new RedisMessageListenerContainer();

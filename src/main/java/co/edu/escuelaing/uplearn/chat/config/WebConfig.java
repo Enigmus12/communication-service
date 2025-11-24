@@ -10,7 +10,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Value("${app.cors.allowed-origins}") private String allowed;
     /**
-     * Configures CORS mappings for the application.
+     * Configuración de los mapeos CORS para la aplicación.
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {

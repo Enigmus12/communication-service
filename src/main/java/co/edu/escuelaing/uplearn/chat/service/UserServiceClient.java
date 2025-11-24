@@ -16,30 +16,30 @@ import reactor.core.publisher.Mono;
 
 import java.util.Locale;
 
-@Component @Slf4j
+@Component
+@Slf4j
 public class UserServiceClient {
 
     private final WebClient http;
     private final Cache rolesCache;
     private final Cache profilesCache;
-    private final String usersBase;
     private final String publicPath;
 
     @Autowired
     public UserServiceClient(CacheManager cacheManager,
-                             @Value("${users.api.base}") String usersBase,
-                             @Value("${users.public.path}") String publicPath) {
+            @Value("${users.api.base}") String usersBase,
+            @Value("${users.public.path}") String publicPath) {
         this.http = WebClient.builder().baseUrl(usersBase).build();
         this.rolesCache = cacheManager.getCache("userRoles");
         this.profilesCache = cacheManager.getCache("userPublicProfiles");
-        this.usersBase = usersBase;
         this.publicPath = publicPath;
     }
     /** Obtener roles del usuario autenticado (con caché) */
     public RolesResponse getMyRolesCached(String bearer) {
         String key = "me:" + bearer.hashCode();
         RolesResponse c = rolesCache.get(key, RolesResponse.class);
-        if (c != null) return c;
+        if (c != null)
+            return c;
         try {
             RolesResponse resp = http.get()
                     .uri("/my-roles")
@@ -48,13 +48,14 @@ public class UserServiceClient {
                     .retrieve()
                     .bodyToMono(RolesResponse.class)
                     .onErrorResume(WebClientResponseException.class, ex -> {
-                        log.error("Users /my-roles error: {} {}", ex.getRawStatusCode(), ex.getResponseBodyAsString());
+                        log.error("Users /my-roles error: {} {}", ex.getStatusCode().value(), ex.getResponseBodyAsString());
                         return Mono.error(ex);
                     })
                     .block();
             if (resp != null) {
-                if (resp.getRoles()!=null) {
-                    resp.setRoles(resp.getRoles().stream().map(r -> r==null? null : r.toUpperCase(Locale.ROOT)).toList());
+                if (resp.getRoles() != null) {
+                    resp.setRoles(
+                            resp.getRoles().stream().map(r -> r == null ? null : r.toUpperCase(Locale.ROOT)).toList());
                 }
                 rolesCache.put(key, resp);
             }
@@ -68,7 +69,8 @@ public class UserServiceClient {
     public PublicProfile getPublicProfileBySub(String sub) {
         String key = "sub:" + sub;
         PublicProfile cached = profilesCache.get(key, PublicProfile.class);
-        if (cached != null) return cached;
+        if (cached != null)
+            return cached;
         try {
             PublicProfile p = http.get()
                     .uri(publicPath + "/{sub}", sub)
@@ -77,7 +79,8 @@ public class UserServiceClient {
                     .bodyToMono(PublicProfile.class)
                     .block();
             if (p != null) {
-                if (p.getEmail()!=null) p.setEmail(p.getEmail().trim().toLowerCase(Locale.ROOT));
+                if (p.getEmail() != null)
+                    p.setEmail(p.getEmail().trim().toLowerCase(Locale.ROOT));
                 profilesCache.put(key, p);
             }
             return p;
@@ -87,11 +90,12 @@ public class UserServiceClient {
         }
     }
 
-    /** Fallback: por id si fuese necesario */
+    /** Obtener perfil público por id (fallback) */
     public PublicProfile getPublicProfileById(String id) {
         String key = "id:" + id;
         PublicProfile cached = profilesCache.get(key, PublicProfile.class);
-        if (cached != null) return cached;
+        if (cached != null)
+            return cached;
         try {
             PublicProfile p = http.get()
                     .uri(publicPath + "/by-id/{id}", id)
@@ -100,7 +104,8 @@ public class UserServiceClient {
                     .bodyToMono(PublicProfile.class)
                     .block();
             if (p != null) {
-                if (p.getEmail()!=null) p.setEmail(p.getEmail().trim().toLowerCase(Locale.ROOT));
+                if (p.getEmail() != null)
+                    p.setEmail(p.getEmail().trim().toLowerCase(Locale.ROOT));
                 profilesCache.put(key, p);
             }
             return p;

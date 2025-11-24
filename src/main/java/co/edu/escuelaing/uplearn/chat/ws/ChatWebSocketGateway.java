@@ -6,20 +6,26 @@ import co.edu.escuelaing.uplearn.chat.dto.SendMessageRequest;
 import co.edu.escuelaing.uplearn.chat.service.AuthorizationService;
 import co.edu.escuelaing.uplearn.chat.service.ChatService;
 import co.edu.escuelaing.uplearn.chat.service.ReservationClient;
+
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import jakarta.annotation.PostConstruct;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.stereotype.Component;
-import org.springframework.web.util.UriComponentsBuilder;
-import org.springframework.web.socket.*;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -37,6 +43,7 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
     // Mapa de sesiones activas por usuario
     private final Map<String, Set<WebSocketSession>> sessionsByUser = new ConcurrentHashMap<>();
 
+    /** Inicializar listener de Redis para mensajes de chat */
     @PostConstruct
     public void initRedisListener() {
         container.addMessageListener((message, pattern) -> {
@@ -52,24 +59,30 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
         }, new PatternTopic("chat:*"));
     }
 
+    /** Entregar mensaje serializado a todas las sesiones activas de un usuario */
     private void deliverTo(String userId, String serializedJson) {
         var sessions = sessionsByUser.getOrDefault(userId, Collections.emptySet());
         for (var s : sessions) {
             try {
                 s.sendMessage(new TextMessage(serializedJson));
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                log.debug("Ignoring IOException sending to user {}: {}", userId, e.toString());
             }
         }
     }
 
+    /** Manejar nueva conexión WebSocket */
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        // Validar token (viene como query param token=?)
-        String token = UriComponentsBuilder.fromUri(session.getUri()).build().getQueryParams().getFirst("token");
+        String token = UriComponentsBuilder.fromUri(session.getUri())
+                .build()
+                .getQueryParams()
+                .getFirst("token");
         if (token == null || token.isBlank()) {
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Falta token"));
             return;
         }
+
         String userId;
         try {
             userId = authz.subject("Bearer " + token);
@@ -77,6 +90,7 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Token inválido"));
             return;
         }
+
         session.getAttributes().put("userId", userId);
         sessionsByUser.computeIfAbsent(userId, k -> ConcurrentHashMap.newKeySet()).add(session);
         log.info("WS conectado userId={} sessions={}", userId, sessionsByUser.get(userId).size());
@@ -85,13 +99,18 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
         var pending = chatService.pendingFor(userId);
         if (!pending.isEmpty()) {
             for (Message m : pending) {
-                ChatMessageData dto = ChatService.toDto(m);
-                session.sendMessage(new TextMessage(json.writeValueAsString(dto)));
+                try {
+                    ChatMessageData dto = chatService.toDto(m);
+                    session.sendMessage(new TextMessage(json.writeValueAsString(dto)));
+                } catch (Exception ex) {
+                    log.error("Error enviando mensaje pendiente {} a {}: {}", m.getId(), userId, ex.toString(), ex);
+                }
             }
             chatService.markDelivered(pending);
         }
     }
 
+    /** Manejar mensaje entrante por WebSocket */
     @Override
     public void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         String userId = (String) session.getAttributes().get("userId");
@@ -99,30 +118,55 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("No autenticado"));
             return;
         }
-        SendMessageRequest req = json.readValue(message.getPayload(), SendMessageRequest.class);
-        String toUserId = req.getToUserId();
-        String content = req.getContent();
 
-        // Validar permiso usando reservation-service
-        String bearer = "Bearer "
-                + UriComponentsBuilder.fromUri(session.getUri()).build().getQueryParams().getFirst("token");
-        if (!reservations.canChat(bearer, toUserId)) {
-            log.warn("Bloqueado intento de chat entre {} y {} sin reservas válidas", userId, toUserId);
-            session.sendMessage(new TextMessage(
-                    json.writeValueAsString(java.util.Map.of("error", "No autorizado para chatear"))));
+        final String payload = message.getPayload();
+        if (payload == null || payload.isBlank())
+            return;
+
+        if ("ping".equalsIgnoreCase(payload.trim()))
+            return;
+
+        JsonNode root;
+        try {
+            root = json.readTree(payload);
+        } catch (Exception ex) {
+            log.debug("WS: ignorando payload no JSON: {}", payload);
             return;
         }
 
-        // Guardar y publicar
+        if (root.has("type") && "ping".equalsIgnoreCase(root.get("type").asText())) {
+            return;
+        }
+
+        SendMessageRequest req = json.treeToValue(root, SendMessageRequest.class);
+        String toUserId = req.getToUserId();
+        String content = req.getContent();
+        if (toUserId == null || toUserId.isBlank() || content == null || content.isBlank()) {
+            log.warn("WS: payload inválido, faltan campos requeridos: {}", payload);
+            return;
+        }
+
+        String bearer = "Bearer " + UriComponentsBuilder.fromUri(session.getUri())
+                .build()
+                .getQueryParams()
+                .getFirst("token");
+        if (!reservations.canChat(bearer, toUserId)) {
+            log.warn("Bloqueado intento de chat entre {} y {} sin reservas válidas", userId, toUserId);
+            session.sendMessage(new TextMessage(json.writeValueAsString(
+                    Map.of("error", "No autorizado para chatear"))));
+            return;
+        }
+
         String chatId = chatService.chatIdOf(userId, toUserId);
         chatService.ensureChat(userId, toUserId);
         Message saved = chatService.saveMessage(chatId, userId, toUserId, content);
-        ChatMessageData dto = ChatService.toDto(saved);
+        ChatMessageData dto = chatService.toDto(saved);
 
         String serialized = json.writeValueAsString(dto);
         redis.convertAndSend("chat:" + chatId, serialized);
     }
 
+    /** Manejar cierre de conexión WebSocket */
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         String userId = (String) session.getAttributes().get("userId");
@@ -130,15 +174,10 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
             var set = sessionsByUser.get(userId);
             if (set != null) {
                 set.remove(session);
-                if (set.isEmpty())
+                if (set.isEmpty()) {
                     sessionsByUser.remove(userId);
+                }
             }
         }
-    }
-
-    @FunctionalInterface
-    interface MessageListener {
-        void onMessage(org.springframework.data.redis.connection.Message channel,
-                org.springframework.data.redis.connection.Message message);
     }
 }
