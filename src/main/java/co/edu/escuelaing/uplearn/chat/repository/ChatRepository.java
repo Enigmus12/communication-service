@@ -4,6 +4,7 @@ import co.edu.escuelaing.uplearn.chat.domain.Chat;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.Optional;
+
 /**
  * Repositorio para gestionar entidades Chat en MongoDB.
  */

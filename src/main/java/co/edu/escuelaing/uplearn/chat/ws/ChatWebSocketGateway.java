@@ -28,10 +28,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+/** Gateway WebSocket para la funcionalidad de chat. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ChatWebSocketGateway extends TextWebSocketHandler {
+
+    private static final String ATTR_USER_ID = "userId";
+    private static final String QUERY_PARAM_TOKEN = "token";
+    private static final String BEARER_PREFIX = "Bearer ";
 
     private final AuthorizationService authz;
     private final ChatService chatService;
@@ -59,7 +64,12 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
         }, new PatternTopic("chat:*"));
     }
 
-    /** Entregar mensaje serializado a todas las sesiones activas de un usuario */
+    /**
+     * Entregar mensaje serializado a todas las sesiones activas de un usuario
+     *
+     * @param userId         el ID del usuario
+     * @param serializedJson el mensaje serializado en JSON
+     */
     private void deliverTo(String userId, String serializedJson) {
         var sessions = sessionsByUser.getOrDefault(userId, Collections.emptySet());
         for (var s : sessions) {
@@ -71,13 +81,18 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
         }
     }
 
-    /** Manejar nueva conexión WebSocket */
+    /**
+     * Manejar nueva conexión WebSocket
+     *
+     * @param session la sesión WebSocket establecida
+     * @throws Exception en caso de error
+     */
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String token = UriComponentsBuilder.fromUri(session.getUri())
                 .build()
                 .getQueryParams()
-                .getFirst("token");
+                .getFirst(QUERY_PARAM_TOKEN);
         if (token == null || token.isBlank()) {
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Falta token"));
             return;
@@ -85,13 +100,13 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
 
         String userId;
         try {
-            userId = authz.subject("Bearer " + token);
+            userId = authz.subject(BEARER_PREFIX + token);
         } catch (Exception e) {
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Token inválido"));
             return;
         }
 
-        session.getAttributes().put("userId", userId);
+        session.getAttributes().put(ATTR_USER_ID, userId);
         sessionsByUser.computeIfAbsent(userId, k -> ConcurrentHashMap.newKeySet()).add(session);
         log.info("WS conectado userId={} sessions={}", userId, sessionsByUser.get(userId).size());
 
@@ -110,21 +125,28 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
         }
     }
 
-    /** Manejar mensaje entrante por WebSocket */
+    /**
+     * Manejar mensaje entrante por WebSocket
+     *
+     * @param session la sesión WebSocket
+     * @param message el mensaje recibido
+     */
     @Override
     public void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        String userId = (String) session.getAttributes().get("userId");
+        String userId = (String) session.getAttributes().get(ATTR_USER_ID);
         if (userId == null) {
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("No autenticado"));
             return;
         }
 
         final String payload = message.getPayload();
-        if (payload == null || payload.isBlank())
+        if (payload == null || payload.isBlank()) {
             return;
+        }
 
-        if ("ping".equalsIgnoreCase(payload.trim()))
+        if ("ping".equalsIgnoreCase(payload.trim())) {
             return;
+        }
 
         JsonNode root;
         try {
@@ -146,10 +168,12 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
             return;
         }
 
-        String bearer = "Bearer " + UriComponentsBuilder.fromUri(session.getUri())
+        String token = UriComponentsBuilder.fromUri(session.getUri())
                 .build()
                 .getQueryParams()
-                .getFirst("token");
+                .getFirst(QUERY_PARAM_TOKEN);
+        String bearer = BEARER_PREFIX + token;
+
         if (!reservations.canChat(bearer, toUserId)) {
             log.warn("Bloqueado intento de chat entre {} y {} sin reservas válidas", userId, toUserId);
             session.sendMessage(new TextMessage(json.writeValueAsString(
@@ -166,10 +190,15 @@ public class ChatWebSocketGateway extends TextWebSocketHandler {
         redis.convertAndSend("chat:" + chatId, serialized);
     }
 
-    /** Manejar cierre de conexión WebSocket */
+    /**
+     * Manejar cierre de conexión WebSocket
+     *
+     * @param session la sesión WebSocket cerrada
+     * @param status  el estado de cierre
+     */
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        String userId = (String) session.getAttributes().get("userId");
+        String userId = (String) session.getAttributes().get(ATTR_USER_ID);
         if (userId != null) {
             var set = sessionsByUser.get(userId);
             if (set != null) {

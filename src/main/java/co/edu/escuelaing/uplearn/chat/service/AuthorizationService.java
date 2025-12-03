@@ -12,26 +12,46 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Locale;
 
+/**
+ * Servicio para manejar la autorización y roles de usuarios.
+ */
 @Service
 @RequiredArgsConstructor
 public class AuthorizationService {
 
     private final UserServiceClient client;
-    /** Obtener información del usuario autenticado */
+
+    /**
+     * Obtener información del usuario autenticado
+     * 
+     * @param bearer el token Bearer del usuario
+     * @return los roles del usuario autenticado
+     */
     public RolesResponse me(String bearer) {
         return client.getMyRolesCached(bearer);
     }
 
-    /** Verificar que el usuario autenticado tiene el rol requerido */
+    /**
+     * Verificar que el usuario autenticado tiene el rol requerido
+     * 
+     * @param bearer el token Bearer del usuario
+     * @param role   el rol requerido
+     */
     public void requireRole(String bearer, String role) {
         var me = me(bearer);
         boolean ok = me != null && me.getRoles() != null &&
-                me.getRoles().stream().map(r -> r==null? null : r.toUpperCase(Locale.ROOT))
+                me.getRoles().stream().map(r -> r == null ? null : r.toUpperCase(Locale.ROOT))
                         .anyMatch(role::equalsIgnoreCase);
-        if (!ok) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No autorizado");
+        if (!ok)
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No autorizado");
     }
 
-    /** Extraer el sub del JWT */
+    /**
+     * Extraer el sub del JWT
+     * 
+     * @param bearer el token Bearer del usuario
+     * @return el subject (sub) del token JWT
+     */
     public String subject(String bearer) {
         String token = extractToken(bearer);
         try {
@@ -43,7 +63,13 @@ public class AuthorizationService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token inválido");
         }
     }
-    /** Extraer el token del header Authorization */
+
+    /**
+     * Extraer el token del header Authorization
+     * 
+     * @param bearer el header Authorization
+     * @return el token extraído
+     */
     private static String extractToken(String bearer) {
         if (bearer == null || bearer.isBlank())
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Falta Authorization");

@@ -7,18 +7,24 @@ import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 
+/**
+ * Configuración de WebSocket para la aplicación de chat.
+ */
 @Configuration
 @EnableWebSocket
 @RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketGateway chatGateway;
+
     /**
      * Registro del manejador de WebSocket para el gateway de chat.
+     * 
+     * @param registry el registro de manejadores de WebSocket
      */
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(chatGateway, "/ws/chat")
-                .setAllowedOrigins("*"); 
+                .setAllowedOrigins("*");
     }
 }

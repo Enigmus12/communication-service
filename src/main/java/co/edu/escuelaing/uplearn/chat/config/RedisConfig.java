@@ -8,6 +8,9 @@ import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactor
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
+/**
+ * Configuración de Redis para la aplicación de chat.
+ */
 @Configuration
 public class RedisConfig {
 
@@ -18,6 +21,8 @@ public class RedisConfig {
 
     /**
      * Configuración de la conexión a Redis.
+     * 
+     * @return LettuceConnectionFactory configurado
      */
     @Bean
     public LettuceConnectionFactory redisConnectionFactory() {
@@ -26,6 +31,8 @@ public class RedisConfig {
 
     /**
      * Configuración del template de Redis para operaciones con cadenas.
+     * 
+     * @return StringRedisTemplate configurado
      */
     @Bean
     public StringRedisTemplate stringRedisTemplate(LettuceConnectionFactory cf) {
@@ -34,6 +41,8 @@ public class RedisConfig {
 
     /**
      * Configuración del contenedor de listeners de mensajes de Redis.
+     * 
+     * @return RedisMessageListenerContainer configurado
      */
     @Bean
     public RedisMessageListenerContainer listenerContainer(LettuceConnectionFactory cf) {

@@ -11,6 +11,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import java.util.*;
 
+/** Cliente para interactuar con el servicio de reservas */
 @Component
 @Slf4j
 public class ReservationClient {
@@ -21,7 +22,13 @@ public class ReservationClient {
         this.http = WebClient.builder().baseUrl(base).build();
     }
 
-    /** Verificar si el usuario autenticado puede chatear con otro usuario */
+    /**
+     * Verificar si el usuario autenticado puede chatear con otro usuario
+     * 
+     * @param bearer     token de autorización Bearer
+     * @param withUserId ID del otro usuario
+     * @return true si puede chatear, false en caso contrario
+     */
     public boolean canChat(String bearer, String withUserId) {
         try {
             Map<String, Object> resp = http.get()
@@ -43,6 +50,10 @@ public class ReservationClient {
     /**
      * IDs de contrapartes válidas (reservas ACEPTADO/INCUMPLIDA) para el usuario
      * autenticado
+     * 
+     * @param bearer token de autorización Bearer
+     * @param myId   ID del usuario autenticado
+     * @return conjunto de IDs de contrapartes válidas
      */
     public Set<String> counterpartIds(String bearer, String myId) {
         Set<String> out = new HashSet<>();
@@ -63,7 +74,12 @@ public class ReservationClient {
         return out;
     }
 
-    /** Obtener reservas desde una URI dada */
+    /**
+     * Obtener reservas desde una URI dada
+     * 
+     * @param bearer token de autorización Bearer
+     * @param uri    la URI del endpoint de reservas
+     */
     private List<Map<String, Object>> fetchReservations(String bearer, String uri) {
         return http.get()
                 .uri(uri)
@@ -73,7 +89,15 @@ public class ReservationClient {
                 }).collectList().block();
     }
 
-    /** Agregar IDs de contrapartes desde la lista de reservas */
+    /**
+     * Agregar IDs de contrapartes desde la lista de reservas
+     * 
+     * @param out          el conjunto de IDs a llenar
+     * @param reservations la lista de reservas
+     * @param myId         ID del usuario autenticado
+     * @param idKey        la clave para obtener el ID de la contraparte en la
+     *                     reserva
+     */
     private void addCounterpartsFromReservations(Set<String> out, List<Map<String, Object>> reservations, String myId,
             String idKey) {
         if (reservations == null)

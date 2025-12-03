@@ -19,11 +19,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Controlador REST para la funcionalidad de chat.
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/chat")
 @RequiredArgsConstructor
 public class ChatController {
+
+    private static final String UNKNOWN_MESSAGE_ID = "<unknown>";
 
     private final AuthorizationService authz;
     private final ChatService chat;
@@ -32,6 +37,8 @@ public class ChatController {
 
     /**
      * Lista de contactos con los que el usuario autenticado tiene reservas válidas.
+     *
+     * @return Lista de contactos de chat
      */
     @GetMapping("/contacts")
     public List<ChatContact> contacts(@RequestHeader("Authorization") String authorization) {
@@ -57,37 +64,59 @@ public class ChatController {
 
     /**
      * Historial de mensajes para un chat concreto.
-     * Se intenta mapear cada mensaje; si alguno falla, se loguea y se omite
-     * para evitar que un solo registro corrupto rompa todo el endpoint.
+     * Se intenta mapear cada mensaje; si alguno falla, se loguea y se omite.
+     *
+     * @param chatId ID del chat
+     * @return Lista de mensajes del chat o un error en caso de fallo
      */
     @GetMapping("/history/{chatId}")
-    public ResponseEntity<?> history(
+    public ResponseEntity<Object> history(
             @PathVariable("chatId") String chatId,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
+
         try {
             List<Message> raw = chat.history(chatId);
             if (raw == null) {
                 return ResponseEntity.ok(List.of());
             }
+
             List<ChatMessageData> out = new ArrayList<>(raw.size());
             for (Message m : raw) {
-                try {
-                    out.add(chat.toDto(m));
-                } catch (Exception ex) {
-                    String mid = safeMessageId(m);
-                    log.error("Error convirtiendo mensaje {} de chat {}: {}", mid, chatId, ex.toString(), ex);
-                }
+                addMessageIfConvertible(out, m, chatId);
             }
             return ResponseEntity.ok(out);
+
         } catch (Exception e) {
             log.error("Error cargando historial para chat {}: {}", chatId, e.toString(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Error cargando historial del chat", "details", e.getMessage()));
+                    .body(Map.of(
+                            "error", "Error cargando historial del chat",
+                            "details", e.getMessage()));
         }
     }
 
-    /** 
-     * Obtener un ID de mensaje seguro para logging 
+    /**
+     * Intenta convertir un Message a ChatMessageData y añadirlo a la lista destino.
+     * En caso de error, se loguea y se continúa sin romper el flujo.
+     *
+     * @param target Lista destino donde agregar el DTO
+     * @param message Mensaje de dominio a convertir
+     * @param chatId ID del chat (para logging)
+     */
+    private void addMessageIfConvertible(List<ChatMessageData> target, Message message, String chatId) {
+        try {
+            target.add(chat.toDto(message));
+        } catch (Exception ex) {
+            String mid = safeMessageId(message);
+            log.error("Error convirtiendo mensaje {} de chat {}: {}", mid, chatId, ex.toString(), ex);
+        }
+    }
+
+    /**
+     * Obtener un ID de mensaje seguro para logging.
+     *
+     * @param m el mensaje del cual obtener el ID
+     * @return ID del mensaje o "<unknown>" si no está disponible
      */
     private String safeMessageId(Message m) {
         try {
@@ -97,11 +126,15 @@ public class ChatController {
         } catch (Exception ex) {
             log.debug("Ignored error obtaining message id", ex);
         }
-        return "<unknown>";
+        return UNKNOWN_MESSAGE_ID;
     }
 
     /**
      * Calcula el chatId entre el usuario autenticado y otro usuario.
+     *
+     * @param otherUserId   ID del otro usuario
+     * @param authorization encabezado de autorización del usuario autenticado
+     * @return Mapa con el chatId y el ID del usuario autenticado
      */
     @GetMapping("/chat-id/with/{otherUserId}")
     public Map<String, String> chatId(
