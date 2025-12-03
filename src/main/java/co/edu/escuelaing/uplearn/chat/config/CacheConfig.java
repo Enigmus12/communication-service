@@ -16,8 +16,7 @@ import java.util.concurrent.TimeUnit;
 @EnableCaching
 public class CacheConfig {
         /**
-         * Configures the cache manager with Caffeine caches for user roles and public
-         * profiles.
+         * configuración del cache manager con caches para roles y perfiles públicos de usuario.
          */
         @Bean
         public CacheManager cacheManager(

@@ -12,9 +12,9 @@ import java.util.Set;
 @Document("chats")
 public class Chat {
     @Id
-    private String id;                  // chatId: hash(userA+userB)
-    @Indexed private String userA;      // menor 
-    @Indexed private String userB;      // mayor
+    private String id;                  
+    @Indexed private String userA;     
+    @Indexed private String userB;      
     private Instant createdAt;
-    private Set<String> participants;   // userA, userB
+    private Set<String> participants;   
 }

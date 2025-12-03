@@ -27,11 +27,11 @@ public class AuthorizationService {
         var me = me(bearer);
         boolean ok = me != null && me.getRoles() != null &&
                 me.getRoles().stream().map(r -> r==null? null : r.toUpperCase(Locale.ROOT))
-                        .anyMatch(r -> role.equalsIgnoreCase(r));
+                        .anyMatch(role::equalsIgnoreCase);
         if (!ok) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No autorizado");
     }
 
-    /** Extraer el "sub" del JWT */
+    /** Extraer el sub del JWT */
     public String subject(String bearer) {
         String token = extractToken(bearer);
         try {

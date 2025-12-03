@@ -14,11 +14,11 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketGateway chatGateway;
     /**
-     * Registers WebSocket handlers for the application.
+     * Registro del manejador de WebSocket para el gateway de chat.
      */
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(chatGateway, "/ws/chat")
-                .setAllowedOrigins("*"); // CORS is handled above for HTTP; WS here needs explicit origins
+                .setAllowedOrigins("*"); 
     }
 }
