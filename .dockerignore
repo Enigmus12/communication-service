@@ -1,0 +1,16 @@
+target
+.git
+.gitignore
+README.md
+.DS_Store
+*.md
+.mvn
+mvnw
+mvnw.cmd
+.idea
+.vscode
+*.iml
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
