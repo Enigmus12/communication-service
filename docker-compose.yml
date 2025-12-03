@@ -1,0 +1,28 @@
+services:
+  redis:
+    image: redis:7
+    container_name: uplearn-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - uplearn-network
+
+  chat-service:
+    image: chat-service:latest
+    container_name: uplearn-chat
+    ports:
+      - "8091:8091"
+    restart: unless-stopped
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    networks:
+      - uplearn-network
+
+networks:
+  uplearn-network:
+    driver: bridge
