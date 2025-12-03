@@ -33,18 +33,24 @@ public class CryptoService {
     void initKey() {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] key = md.digest(secret.getBytes(StandardCharsets.UTF_8)); // 32 bytes
+            byte[] key = md.digest(secret.getBytes(StandardCharsets.UTF_8));
             this.keySpec = new SecretKeySpec(key, "AES");
         } catch (Exception e) {
             throw new IllegalStateException("No se pudo inicializar la clave AES", e);
         }
     }
 
-    /** Encripta texto plano -> Base64(iv + ciphertext) */
+    /**
+     * Encripta texto plano -> Base64(iv + ciphertext)
+     * 
+     * @param plainText el texto plano a encriptar
+     * @return el texto encriptado
+     */
     public String encrypt(String plainText) {
-        if (plainText == null) return null;
+        if (plainText == null)
+            return null;
         try {
-            byte[] iv = new byte[12]; // 96 bits para GCM
+            byte[] iv = new byte[12];
             random.nextBytes(iv);
 
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -66,9 +72,13 @@ public class CryptoService {
     /**
      * Desencripta Base64(iv+ciphertext).
      * Si falla (mensajes viejos sin cifrar, etc.), devuelve el valor original.
+     * 
+     * @param valueFromDb el valor cifrado desde BD
+     * @return el texto desencriptado
      */
     public String decrypt(String valueFromDb) {
-        if (valueFromDb == null) return null;
+        if (valueFromDb == null)
+            return null;
         try {
             byte[] combined = Base64.getDecoder().decode(valueFromDb);
             if (combined.length < 13) {

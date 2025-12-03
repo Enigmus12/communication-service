@@ -8,13 +8,21 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import java.time.Instant;
 import java.util.Set;
 
-@Data @Builder @NoArgsConstructor @AllArgsConstructor
+/**
+ * Representa un chat entre dos usuarios.
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Document("chats")
 public class Chat {
     @Id
-    private String id;                  
-    @Indexed private String userA;     
-    @Indexed private String userB;      
+    private String id;
+    @Indexed
+    private String userA;
+    @Indexed
+    private String userB;
     private Instant createdAt;
-    private Set<String> participants;   
+    private Set<String> participants;
 }

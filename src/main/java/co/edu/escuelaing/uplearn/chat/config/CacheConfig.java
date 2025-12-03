@@ -12,11 +12,19 @@ import org.springframework.context.annotation.Configuration;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Configuración de caché utilizando Caffeine para almacenar roles y perfiles
+ * públicos de usuario.
+ */
 @Configuration
 @EnableCaching
 public class CacheConfig {
+
         /**
-         * configuración del cache manager con caches para roles y perfiles públicos de usuario.
+         * configuración del cache manager con caches para roles y perfiles públicos de
+         * usuario.
+         * 
+         * @return CacheManager configurado
          */
         @Bean
         public CacheManager cacheManager(

@@ -16,6 +16,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.Locale;
 
+/** Cliente para interactuar con el servicio de usuarios */
 @Component
 @Slf4j
 public class UserServiceClient {
@@ -34,7 +35,13 @@ public class UserServiceClient {
         this.profilesCache = cacheManager.getCache("userPublicProfiles");
         this.publicPath = publicPath;
     }
-    /** Obtener roles del usuario autenticado (con caché) */
+
+    /**
+     * Obtener roles del usuario autenticado (con caché)
+     * 
+     * @param bearer el token Bearer del usuario
+     * @return los roles del usuario autenticado
+     */
     public RolesResponse getMyRolesCached(String bearer) {
         String key = "me:" + bearer.hashCode();
         RolesResponse c = rolesCache.get(key, RolesResponse.class);
@@ -48,7 +55,8 @@ public class UserServiceClient {
                     .retrieve()
                     .bodyToMono(RolesResponse.class)
                     .onErrorResume(WebClientResponseException.class, ex -> {
-                        log.error("Users /my-roles error: {} {}", ex.getStatusCode().value(), ex.getResponseBodyAsString());
+                        log.error("Users /my-roles error: {} {}", ex.getStatusCode().value(),
+                                ex.getResponseBodyAsString());
                         return Mono.error(ex);
                     })
                     .block();
@@ -61,11 +69,16 @@ public class UserServiceClient {
             }
             return resp;
         } catch (Exception e) {
-            throw new RuntimeException("Error llamando Users /my-roles", e);
+            throw new UserServiceException("Error llamando Users /my-roles", e);
         }
     }
 
-    /** Obtener perfil público por sub (preferido) */
+    /**
+     * Obtener perfil público por sub (preferido)
+     * 
+     * @param sub el subject (sub) del usuario
+     * @return el perfil público del usuario
+     */
     public PublicProfile getPublicProfileBySub(String sub) {
         String key = "sub:" + sub;
         PublicProfile cached = profilesCache.get(key, PublicProfile.class);
@@ -90,7 +103,12 @@ public class UserServiceClient {
         }
     }
 
-    /** Obtener perfil público por id (fallback) */
+    /**
+     * Obtener perfil público por id (fallback)
+     * 
+     * @param id el ID del usuario
+     * @return el perfil público del usuario
+     */
     public PublicProfile getPublicProfileById(String id) {
         String key = "id:" + id;
         PublicProfile cached = profilesCache.get(key, PublicProfile.class);
@@ -112,6 +130,16 @@ public class UserServiceClient {
         } catch (Exception e) {
             log.warn("No se encontró perfil público por id={}", id);
             return null;
+        }
+    }
+
+    public static class UserServiceException extends RuntimeException {
+        public UserServiceException(String message) {
+            super(message);
+        }
+
+        public UserServiceException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 }
